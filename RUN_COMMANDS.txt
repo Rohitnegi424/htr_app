@@ -1,0 +1,27 @@
+InkVoice run commands
+=====================
+
+1. Start the Python HTR backend
+
+python backend/server.py
+
+2. Start the Expo app
+
+npm install
+npx expo start
+
+3. Open on PC browser from the Expo terminal
+
+Press w
+
+4. If you want to restart cleanly
+
+Ctrl + C
+python backend/server.py
+npx expo start
+
+Notes
+-----
+- Keep the backend terminal running while using recognition.
+- For web on the same PC, the app uses http://127.0.0.1:8765 for the backend.
+- Test with a cropped single word or short line first for best results.

@@ -7,12 +7,13 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 
 import { useTheme } from '../src/theme/ThemeContext';
-import { recognizeImage } from '../src/services/recognition';
+import { getRecognitionEngineStatus, recognizeImage } from '../src/services/recognition';
 import { speak, stopSpeaking } from '../src/services/tts';
 import { addHistory } from '../src/services/history';
 
 export default function ImageScreen() {
   const { colors, settings } = useTheme();
+  const recognitionEngine = getRecognitionEngineStatus();
   const router = useRouter();
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
@@ -22,7 +23,9 @@ export default function ImageScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const pickFromLibrary = async () => {
-    try { Haptics.selectionAsync(); } catch {}
+    try {
+      Haptics.selectionAsync();
+    } catch {}
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: false,
@@ -30,17 +33,19 @@ export default function ImageScreen() {
       base64: true,
     });
     if (!res.canceled && res.assets?.[0]) {
-      const a = res.assets[0];
-      setImageUri(a.uri);
-      setImageBase64(a.base64 ?? null);
-      setMime(a.mimeType || 'image/jpeg');
+      const asset = res.assets[0];
+      setImageUri(asset.uri);
+      setImageBase64(asset.base64 ?? null);
+      setMime(asset.mimeType || 'image/jpeg');
       setText('');
       setError(null);
     }
   };
 
   const captureWithCamera = async () => {
-    try { Haptics.selectionAsync(); } catch {}
+    try {
+      Haptics.selectionAsync();
+    } catch {}
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) {
       setError('Camera permission denied.');
@@ -51,10 +56,10 @@ export default function ImageScreen() {
       base64: true,
     });
     if (!res.canceled && res.assets?.[0]) {
-      const a = res.assets[0];
-      setImageUri(a.uri);
-      setImageBase64(a.base64 ?? null);
-      setMime(a.mimeType || 'image/jpeg');
+      const asset = res.assets[0];
+      setImageUri(asset.uri);
+      setImageBase64(asset.base64 ?? null);
+      setMime(asset.mimeType || 'image/jpeg');
       setText('');
       setError(null);
     }
@@ -71,7 +76,9 @@ export default function ImageScreen() {
       if (recognized) {
         addHistory({ text: recognized, source: 'photo', latencyMs: result.latency_ms }).catch(() => {});
         if (settings.autoSpeak) speak(recognized, { rate: settings.ttsRate, pitch: settings.ttsPitch });
-        try { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } catch {}
+        try {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } catch {}
       } else {
         setError('No text detected in the image.');
       }
@@ -80,14 +87,19 @@ export default function ImageScreen() {
     } finally {
       setLoading(false);
     }
-  }, [imageBase64, mime, settings.autoSpeak, settings.ttsRate, settings.ttsPitch]);
+  }, [imageBase64, mime, settings.autoSpeak, settings.ttsPitch, settings.ttsRate]);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       <View style={styles.topRow}>
         <Pressable
-          onPress={() => { stopSpeaking(); router.back(); }}
-          accessible accessibilityRole="button" accessibilityLabel="Go back"
+          onPress={() => {
+            stopSpeaking();
+            router.back();
+          }}
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
           testID="img-back-btn"
           style={[styles.iconBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
         >
@@ -114,7 +126,9 @@ export default function ImageScreen() {
         <View style={styles.btnRow}>
           <Pressable
             onPress={pickFromLibrary}
-            accessible accessibilityRole="button" accessibilityLabel="Upload image from gallery"
+            accessible
+            accessibilityRole="button"
+            accessibilityLabel="Upload image from gallery"
             testID="pick-image-btn"
             style={({ pressed }) => [
               styles.primaryBtn,
@@ -127,7 +141,9 @@ export default function ImageScreen() {
 
           <Pressable
             onPress={captureWithCamera}
-            accessible accessibilityRole="button" accessibilityLabel="Capture photo with camera"
+            accessible
+            accessibilityRole="button"
+            accessibilityLabel="Capture photo with camera"
             testID="capture-image-btn"
             style={({ pressed }) => [
               styles.primaryBtn,
@@ -142,7 +158,9 @@ export default function ImageScreen() {
         <Pressable
           onPress={runRecognize}
           disabled={!imageBase64 || loading}
-          accessible accessibilityRole="button" accessibilityLabel="Recognize text in image"
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel="Recognize text in image"
           testID="recognize-image-btn"
           style={({ pressed }) => [
             styles.ctaBtn,
@@ -157,13 +175,22 @@ export default function ImageScreen() {
           ) : (
             <>
               <Ionicons name="sparkles" size={22} color="#0A0A0C" />
-              <Text style={styles.ctaLabel}>Recognize text</Text>
+              <Text style={styles.ctaLabel}>Run recognition</Text>
             </>
           )}
         </Pressable>
 
+        <Text style={[styles.engineStatus, { color: colors.textSecondary }]}>
+          Engine: {recognitionEngine.label} {recognitionEngine.ready ? 'ready' : 'setup required'}
+        </Text>
+        <Text style={[styles.engineHelp, { color: colors.textSecondary }]}>
+          Best results come from a cropped single word or short line on a plain background.
+        </Text>
+
         {error ? (
-          <Text style={[styles.err, { color: colors.primary }]} testID="img-error">{error}</Text>
+          <Text style={[styles.err, { color: colors.primary }]} testID="img-error">
+            {error}
+          </Text>
         ) : null}
 
         <Text style={[styles.label, { color: colors.textSecondary }]}>Extracted text</Text>
@@ -188,7 +215,9 @@ export default function ImageScreen() {
         <Pressable
           onPress={() => text && speak(text, { rate: settings.ttsRate, pitch: settings.ttsPitch })}
           disabled={!text}
-          accessible accessibilityRole="button" accessibilityLabel="Read text aloud"
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel="Read text aloud"
           testID="read-aloud-btn"
           style={({ pressed }) => [
             styles.ctaOutline,
@@ -216,7 +245,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   iconBtn: {
-    width: 44, height: 44, borderRadius: 22, borderWidth: 1, alignItems: 'center', justifyContent: 'center',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: { fontSize: 18, fontWeight: '800' },
   content: { padding: 18, paddingBottom: 80, gap: 14 },
@@ -257,6 +291,8 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   ctaLabel: { color: '#0A0A0C', fontSize: 16, fontWeight: '800', marginLeft: 8 },
+  engineStatus: { fontSize: 12, fontWeight: '600' },
+  engineHelp: { fontSize: 12, lineHeight: 18, marginTop: -4 },
   err: { fontSize: 13, marginTop: 4 },
   label: { fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', fontWeight: '700', marginTop: 4 },
   input: {
@@ -278,5 +314,3 @@ const styles = StyleSheet.create({
   },
   ctaOutlineLabel: { fontSize: 16, fontWeight: '800', marginLeft: 8 },
 });
-
-

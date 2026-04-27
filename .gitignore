@@ -2,6 +2,12 @@
 
 # dependencies
 node_modules/
+backend/runtime_model.keras
+backend/charset.json
+backend_runtime/
+model.weights.h5
+tmp_patched.keras
+tmp_patched2.keras
 
 # Expo
 .expo/

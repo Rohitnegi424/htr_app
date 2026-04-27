@@ -43,9 +43,10 @@
     ],
     "experiments": {
       "typedRoutes": true,
-      "reactCompiler": true
+      "reactCompiler": false
     },
     "extra": {
+      "htrApiBaseUrl": "http://127.0.0.1:8765",
       "router": {},
       "eas": {
         "projectId": "e5d80bee-6cb4-47b3-be99-29bf4622c167"

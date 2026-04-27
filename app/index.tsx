@@ -11,7 +11,7 @@ import GlassPill from '../src/components/GlassPill';
 import FAB from '../src/components/Fab';
 import SheetMenu from '../src/components/SheetMenu';
 import { useTheme } from '../src/theme/ThemeContext';
-import { recognizeImage } from '../src/services/recognition';
+import { getRecognitionEngineStatus, recognizeImage } from '../src/services/recognition';
 import { speak, stopSpeaking } from '../src/services/tts';
 import { addHistory } from '../src/services/history';
 
@@ -19,6 +19,7 @@ const IDLE_DEBOUNCE_MS = 900;
 
 export default function WriteScreen() {
   const { colors, settings } = useTheme();
+  const recognitionEngine = getRecognitionEngineStatus();
   const router = useRouter();
   const canvasRef = useRef<CanvasHandle>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -27,6 +28,7 @@ export default function WriteScreen() {
   const [loading, setLoading] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasInk, setHasInk] = useState(false);
 
   const clearDebounce = () => {
     if (debounceRef.current) {
@@ -51,7 +53,9 @@ export default function WriteScreen() {
       if (text) {
         if (settings.autoSpeak) speak(text, { rate: settings.ttsRate, pitch: settings.ttsPitch });
         addHistory({ text, source: 'canvas', latencyMs: result.latency_ms }).catch(() => {});
-        try { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } catch {}
+        try {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } catch {}
       }
     } catch (e: any) {
       setError(e?.message ?? 'Recognition failed');
@@ -60,7 +64,7 @@ export default function WriteScreen() {
       inFlightRef.current = false;
       setLoading(false);
     }
-  }, [settings.autoSpeak, settings.ttsRate, settings.ttsPitch]);
+  }, [settings.autoSpeak, settings.ttsPitch, settings.ttsRate]);
 
   const onStrokeStart = useCallback(() => {
     clearDebounce();
@@ -78,14 +82,17 @@ export default function WriteScreen() {
     clearDebounce();
     stopSpeaking();
     canvasRef.current?.clear();
+    setHasInk(false);
     setRecognized('');
     setError(null);
-    try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch {}
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch {}
   }, []);
 
   const onReplay = useCallback(() => {
     if (recognized) speak(recognized, { rate: settings.ttsRate, pitch: settings.ttsPitch });
-  }, [recognized, settings.ttsRate, settings.ttsPitch]);
+  }, [recognized, settings.ttsPitch, settings.ttsRate]);
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: colors.background }}>
@@ -94,11 +101,14 @@ export default function WriteScreen() {
           <View style={[styles.brandDot, { backgroundColor: colors.primary }]} />
           <Text style={[styles.brand, { color: colors.textPrimary }]}>InkVoice</Text>
         </View>
-        <Text style={[styles.subtle, { color: colors.textSecondary }]}>Write · Hear · Remember</Text>
+        <Text style={[styles.subtle, { color: colors.textSecondary }]}>Write and hear your handwriting</Text>
       </View>
 
       <Animated.View entering={FadeInDown.duration(350)} style={styles.pillWrap}>
         <GlassPill text={recognized} loading={loading} />
+        <Text style={[styles.engineStatus, { color: colors.textSecondary }]}>
+          Engine: {recognitionEngine.label} {recognitionEngine.ready ? 'ready' : 'setup required'}
+        </Text>
         {error ? (
           <Text style={[styles.err, { color: colors.primary }]} testID="recognition-error">
             {error}
@@ -112,20 +122,43 @@ export default function WriteScreen() {
           strokeColor={colors.canvasStroke}
           backgroundColor={colors.canvasBg}
           strokeWidth={settings.highContrast ? 8 : 6}
-          onStrokeStart={onStrokeStart}
+          onStrokeStart={() => {
+            setHasInk(true);
+            onStrokeStart();
+          }}
           onStrokeEnd={onStrokeEnd}
         />
 
         <Animated.View entering={FadeIn.delay(300)} style={styles.hintWrap} pointerEvents="none">
           {!recognized && !loading ? (
             <Text style={[styles.hint, { color: colors.textSecondary }]}>
-              ✎ Write anywhere — pause to hear it aloud
+              Write, pause, and it will recognize the text and read it aloud
             </Text>
           ) : null}
         </Animated.View>
       </View>
 
       <View style={styles.actions} pointerEvents="box-none">
+        <Pressable
+          onPress={runRecognition}
+          disabled={!hasInk || loading}
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel="Recognize handwriting now"
+          testID="recognize-canvas-btn"
+          style={({ pressed }) => [
+            styles.secondaryBtn,
+            {
+              backgroundColor: colors.primary,
+              borderColor: colors.primary,
+              opacity: !hasInk || loading ? 0.4 : pressed ? 0.85 : 1,
+            },
+          ]}
+        >
+          <Ionicons name="sparkles-outline" size={22} color="#0A0A0C" />
+          <Text style={[styles.primaryActionLabel, { color: '#0A0A0C' }]}>Recognize</Text>
+        </Pressable>
+
         <Pressable
           onPress={onClear}
           accessible
@@ -207,12 +240,13 @@ const styles = StyleSheet.create({
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   brandDot: { width: 10, height: 10, borderRadius: 5, marginRight: 10 },
   brand: { fontSize: 22, fontWeight: '800', letterSpacing: 0.2 },
-  subtle: { fontSize: 13, marginTop: 4, letterSpacing: 2, textTransform: 'uppercase', fontWeight: '600' },
+  subtle: { fontSize: 13, marginTop: 4, letterSpacing: 1.2, textTransform: 'uppercase', fontWeight: '600' },
   pillWrap: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 6 },
+  engineStatus: { marginTop: 8, marginLeft: 6, fontSize: 12, fontWeight: '600' },
   err: { marginTop: 8, marginLeft: 6, fontSize: 13 },
   canvasWrap: { flex: 1, marginHorizontal: 16, marginTop: 10, marginBottom: 110, borderRadius: 28, overflow: 'hidden' },
   hintWrap: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
-  hint: { fontSize: 16, fontWeight: '500' },
+  hint: { fontSize: 16, fontWeight: '500', textAlign: 'center', paddingHorizontal: 24 },
   actions: {
     position: 'absolute',
     bottom: 36,
@@ -226,7 +260,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     borderRadius: 22,
     borderWidth: 1,
-    // marginRight: 10,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -237,6 +270,5 @@ const styles = StyleSheet.create({
     }),
   },
   secondaryLabel: { fontSize: 15, fontWeight: '700', marginLeft: 8 },
+  primaryActionLabel: { fontSize: 15, fontWeight: '800', marginLeft: 8 },
 });
-
-
