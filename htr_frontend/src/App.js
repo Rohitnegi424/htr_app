@@ -5,6 +5,7 @@ import Result from './components/Result';
 import Controls from './components/Controls';
 import {
   autocorrectText,
+  getTrocrStatus,
   sendImage,
   synthesizeSpeech,
   translateText,
@@ -27,6 +28,20 @@ const languageOptions = [
   { label: 'Urdu', speechCode: 'ur-IN', translateCode: 'ur', ttsCode: 'ur' },
 ];
 
+const ocrModels = {
+  custom: 'Custom HTR',
+  hindi: 'Hindi HTR',
+  trocr: 'TrOCR',
+};
+
+const compactError = (message) => {
+  if (!message) return 'Prediction failed. Check backend server and try again.';
+  if (message.includes('Unrecognized image processor')) {
+    return 'TrOCR model metadata is incomplete. The backend is trying a compatible processor fallback.';
+  }
+  return message.length > 220 ? `${message.slice(0, 220)}...` : message;
+};
+
 export default function App() {
   const [file, setFile] = useState(null);
   const [text, setText] = useState("");
@@ -35,6 +50,8 @@ export default function App() {
   const [speechLang, setSpeechLang] = useState('en-US');
   const [speechSource, setSpeechSource] = useState('ocr');
   const [history, setHistory] = useState([]);
+  const [ocrModel, setOcrModel] = useState('custom');
+  const [lastModel, setLastModel] = useState('');
   const [loading, setLoading] = useState(false);
   const [translating, setTranslating] = useState(false);
   const [autocorrecting, setAutocorrecting] = useState(false);
@@ -75,28 +92,59 @@ export default function App() {
     languageOptions.find((language) => language.speechCode === speechLang) ||
     languageOptions[0];
 
+  const formatTrocrStatus = (status) => {
+    const percent = Number.isFinite(status?.percent) ? status.percent : 0;
+    const messageText = status?.message || 'Preparing TrOCR...';
+    return `${messageText} ${percent}%`;
+  };
+
   const handleFileChange = (nextFile) => {
     setFile(nextFile);
     setText('');
     setTranslatedText('');
     setSpeechSource('ocr');
+    setLastModel('');
     setMessage(nextFile ? 'Image ready. You can recognize it as many times as you need.' : '');
   };
 
-  const handlePredict = async () => {
+  const runPrediction = async (modelName) => {
     if (!file) return;
+    let statusTimer = null;
+
+    setOcrModel(modelName);
     setLoading(true);
-    setMessage('');
+    setMessage(
+      modelName === 'trocr'
+        ? 'Preparing TrOCR... 0%'
+        : modelName === 'hindi'
+          ? 'Running Hindi HTR...'
+        : ''
+    );
+
+    if (modelName === 'trocr') {
+      statusTimer = window.setInterval(async () => {
+        try {
+          const status = await getTrocrStatus();
+          setMessage(formatTrocrStatus(status));
+        } catch (error) {
+          setMessage('Preparing TrOCR...');
+        }
+      }, 1000);
+    }
+
     try {
-      const res = await sendImage(file);
+      const res = await sendImage(file, modelName, speechLang);
       const recognizedText = res.text || 'No text detected';
       setText(recognizedText);
       setTranslatedText('');
       setSpeechSource('ocr');
+      setLastModel(res.modelLabel || ocrModels[modelName] || 'Selected model');
+      setMessage(`Recognized with ${res.modelLabel || ocrModels[modelName] || 'selected model'}.`);
       setHistory((items) => [
         {
           id: Date.now(),
           fileName: file.name,
+          model: res.modelLabel || ocrModels[modelName] || 'Selected model',
           text: recognizedText,
           time: new Date().toLocaleTimeString([], {
             hour: '2-digit',
@@ -107,10 +155,19 @@ export default function App() {
       ]);
     } catch (error) {
       console.error('Prediction failed', error);
-      setText('Prediction failed. Check backend server and try again.');
+      const backendMessage = error.response?.data?.error;
+      setText('');
+      setMessage(compactError(backendMessage));
     } finally {
+      if (statusTimer) {
+        window.clearInterval(statusTimer);
+      }
       setLoading(false);
     }
+  };
+
+  const handlePredict = () => {
+    runPrediction(ocrModel);
   };
 
   const handleCancel = () => {
@@ -124,6 +181,7 @@ export default function App() {
     setText("");
     setTranslatedText('');
     setSpeechSource('ocr');
+    setLastModel('');
     setMessage('');
     setIsSpeaking(false);
   };
@@ -158,11 +216,10 @@ export default function App() {
     setMessage('Autocorrecting OCR text...');
 
     try {
-      const result = await autocorrectText(text, 'en-US');
+      const result = await autocorrectText(text, speechLang);
       setText(result.corrected || text);
       setTranslatedText('');
       setSpeechSource('ocr');
-      setSpeechLang('en-US');
       setMessage(
         result.changed
           ? 'OCR text was autocorrected.'
@@ -274,7 +331,31 @@ export default function App() {
 
       <div className="action-row">
         <button type="button" onClick={handlePredict} disabled={!file || loading}>
-          {loading ? 'Recognizing...' : 'Recognize text'}
+          {loading ? 'Recognizing...' : `Recognize with ${ocrModels[ocrModel]}`}
+        </button>
+        <button
+          type="button"
+          onClick={() => runPrediction('custom')}
+          className="ghost"
+          disabled={!file || loading}
+        >
+          Custom HTR
+        </button>
+        <button
+          type="button"
+          onClick={() => runPrediction('hindi')}
+          className="secondary"
+          disabled={!file || loading}
+        >
+          Hindi HTR
+        </button>
+        <button
+          type="button"
+          onClick={() => runPrediction('trocr')}
+          className="secondary"
+          disabled={!file || loading}
+        >
+          TrOCR
         </button>
         <button type="button" onClick={handleCancel} className="ghost">
           Clear
@@ -283,11 +364,16 @@ export default function App() {
 
       {(message || loading) && (
         <p className={`message ${loading ? 'pulse' : ''}`}>
-          {loading ? 'Processing handwriting...' : message}
+          {message || 'Processing handwriting...'}
         </p>
       )}
 
-      <Result text={text} translatedText={translatedText} targetLabel={targetLabel} />
+      <Result
+        text={text}
+        translatedText={translatedText}
+        targetLabel={targetLabel}
+        modelLabel={lastModel || ocrModels[ocrModel]}
+      />
 
       <Controls
         canUseText={Boolean(text)}
@@ -329,6 +415,7 @@ export default function App() {
                 <span>
                   <strong>{item.fileName}</strong>
                   <small>{item.time}</small>
+                  <small>{item.model}</small>
                 </span>
                 <span>{item.text}</span>
               </button>

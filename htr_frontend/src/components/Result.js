@@ -1,7 +1,7 @@
 
 import React from 'react';
 
-export default function Result({ text, translatedText, targetLabel }) {
+export default function Result({ text, translatedText, targetLabel, modelLabel }) {
   if (!text && !translatedText) return null;
 
   return (
@@ -9,7 +9,7 @@ export default function Result({ text, translatedText, targetLabel }) {
       {text && (
         <article className="result-box">
           <div className="section-heading">
-            <span className="eyebrow">OCR result</span>
+            <span className="eyebrow">{modelLabel || 'OCR result'}</span>
             <h2>Recognized text</h2>
           </div>
           <p>{text}</p>

@@ -4,3 +4,5 @@ tensorflow
 pillow
 numpy
 gTTS
+torch
+transformers

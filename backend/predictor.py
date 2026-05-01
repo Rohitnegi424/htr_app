@@ -34,7 +34,10 @@ def preprocess_word(img):
     return model_input, time_steps
 
 
-def decode(preds, input_len):
+def decode(preds, input_len, idx_to_char_map=None, blank_token=None):
+    idx_to_char_map = idx_to_char if idx_to_char_map is None else idx_to_char_map
+    blank_token = blank_idx if blank_token is None else blank_token
+
     preds = preds[:, :input_len, :]
     decoded = tf.keras.backend.ctc_decode(
         preds,
@@ -44,14 +47,14 @@ def decode(preds, input_len):
 
     text = ""
     for idx in decoded:
-        if idx == -1 or idx == blank_idx:
+        if idx == -1 or idx == blank_token:
             continue
-        text += idx_to_char.get(int(idx), "")
+        text += idx_to_char_map.get(int(idx), "")
 
     return unicodedata.normalize("NFC", text)
 
 
-def predict_word(model, img):
+def predict_word(model, img, idx_to_char_map=None, blank_token=None):
     inp, t = preprocess_word(img)
     preds = model.predict(inp, verbose=0)
-    return decode(preds, t)
+    return decode(preds, t, idx_to_char_map, blank_token)
