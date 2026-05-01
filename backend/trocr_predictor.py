@@ -187,6 +187,7 @@ def load_trocr(model_name=TROCR_MODEL_NAME):
 
         _set_status("loading", f"Loading {label} weights into memory...", 95)
         model = VisionEncoderDecoderModel.from_pretrained(model_name)
+        align_processor_image_size(processor, model)
         device = "cuda" if torch.cuda.is_available() else "cpu"
         model.to(device)
         model.eval()
@@ -199,6 +200,26 @@ def load_trocr(model_name=TROCR_MODEL_NAME):
         watcher.join(timeout=1)
 
     return processor, model, device
+
+
+def align_processor_image_size(processor, model):
+    image_processor = getattr(processor, "image_processor", None)
+    encoder_config = getattr(getattr(model, "config", None), "encoder", None)
+    image_size = getattr(encoder_config, "image_size", None)
+
+    if image_processor is None or image_size is None:
+        return
+
+    if isinstance(image_size, (tuple, list)):
+        height, width = image_size[:2]
+    else:
+        height = width = image_size
+
+    size = {"height": int(height), "width": int(width)}
+    image_processor.size = size
+
+    if hasattr(image_processor, "crop_size"):
+        image_processor.crop_size = size
 
 
 def predict_trocr_image(image, model_name=TROCR_MODEL_NAME):

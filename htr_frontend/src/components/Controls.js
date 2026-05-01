@@ -63,7 +63,7 @@ export default function Controls({
           id="voice-language"
           value={speechLang}
           onChange={(e) => onSpeechLangChange(e.target.value)}
-          disabled={!canUseText}
+          disabled={isSpeaking}
         >
           {languageOptions.map((language) => (
             <option key={language.speechCode} value={language.speechCode}>
